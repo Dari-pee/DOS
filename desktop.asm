@@ -6,8 +6,6 @@ global desktop_draw_start_menu
 SCREEN equ 0xA0000
 WIDTH  equ 320
 
-; AL = colour, EDI = destination, ECX = width, EDX = height.
-; Each row starts exactly WIDTH pixels after the previous one.
 fill_rect:
     push ebx
     push esi
@@ -25,7 +23,6 @@ fill_rect:
     pop ebx
     ret
 
-; Draw one 5x7 uppercase glyph. AL = A..Z, EDI = top-left, BL = colour.
 draw_glyph:
     push eax
     push ecx
@@ -67,7 +64,6 @@ draw_glyph:
     pop eax
     ret
 
-; ESI = NUL-terminated uppercase text, EDI = top-left, BL = colour.
 draw_text:
 .next:
     lodsb
@@ -83,7 +79,6 @@ desktop_draw:
     pushad
     cld
 
-    ; Neutral background, top bar, and taskbar.
     mov edi, SCREEN
     mov ecx, 320
     mov edx, 200
@@ -102,7 +97,6 @@ desktop_draw:
     mov al, 7
     call fill_rect
 
-    ; Start button.
     mov edi, SCREEN + (WIDTH * 182) + 6
     mov ecx, 54
     mov edx, 14
@@ -113,7 +107,6 @@ desktop_draw:
     mov bl, 15
     call draw_text
 
-    ; Two icons: white border and coloured centre.
     mov edi, SCREEN + (WIDTH * 30) + 20
     mov ecx, 42
     mov edx, 42
@@ -136,7 +129,6 @@ desktop_draw:
     mov al, 5
     call fill_rect
 
-    ; Main window: black border, white body, and a green title bar.
     mov edi, SCREEN + (WIDTH * 32) + 82
     mov ecx, 180
     mov edx, 118
@@ -153,7 +145,6 @@ desktop_draw:
     mov al, 2
     call fill_rect
 
-    ; Red close button; coordinates match kernel.c.
     mov edi, SCREEN + (WIDTH * 4) + 296
     mov ecx, 16
     mov edx, 16
@@ -168,13 +159,10 @@ desktop_draw:
     popad
     ret
 
-; Popup menu displayed above the Start button.  Application entries are
-; colour-coded placeholders until the first built-in programs are added.
 desktop_draw_start_menu:
     pushad
     cld
 
-    ; Black outline and light menu body.
     mov edi, SCREEN + (WIDTH * 104) + 6
     mov ecx, 122
     mov edx, 74
@@ -186,7 +174,6 @@ desktop_draw_start_menu:
     mov al, 7
     call fill_rect
 
-    ; Header plus three menu entries.
     mov edi, SCREEN + (WIDTH * 108) + 10
     mov ecx, 114
     mov edx, 12
