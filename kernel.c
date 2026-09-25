@@ -23,18 +23,49 @@ extern void desktop_draw_start_menu(void);
 #define DEFAULT_COLOR 0x07
 #define KEYBOARD_DATA_PORT 0x60
 #define KEYBOARD_STATUS_PORT 0x64
-#define ROOT_DIRECTORY_ADDRESS 0xB200
-#define ROOT_DIRECTORY_ENTRIES 224
 #define DIRECTORY_BUFFER_ADDRESS 0xE000
 #define DIRECTORY_ENTRIES 16
-#define FAT12_DATA_START_SECTOR 37
 
-static volatile const unsigned char *const root_directory =
-    (volatile const unsigned char *)ROOT_DIRECTORY_ADDRESS;
+#define BPB_BASE 0x7C00
+#define FAT_BUFFER_ADDRESS 0xA000
+
+static const unsigned char *const bpb = (const unsigned char *)BPB_BASE;
+
+static unsigned short fat12_data_start_sector;
+static unsigned short fat12_root_directory_entries;
+static volatile const unsigned char *fat12_root_directory;
+
+static unsigned short bpb_word(int offset)
+{
+    return (unsigned short)(bpb[offset] | (bpb[offset + 1] << 8));
+}
+
+static void fat12_layout_init(void)
+{
+    unsigned short reserved_sectors = bpb_word(0x0E);
+    unsigned char  num_fats         = bpb[0x10];
+    unsigned short sectors_per_fat  = bpb_word(0x16);
+    unsigned short root_entries     = bpb_word(0x11);
+    unsigned short fat_start_sector;
+    unsigned short root_start_sector;
+    unsigned short root_dir_sectors;
+
+    fat_start_sector  = reserved_sectors;
+    root_start_sector = (unsigned short)(fat_start_sector + num_fats * sectors_per_fat);
+    root_dir_sectors  = (unsigned short)((root_entries * 32 + 511) / 512);
+
+    fat12_data_start_sector      = (unsigned short)(root_start_sector + root_dir_sectors);
+    fat12_root_directory_entries = root_entries;
+
+    /* bootwo.asm places the root directory buffer right after its FAT
+       buffer, sized to whatever this FAT actually is. */
+    fat12_root_directory = (volatile const unsigned char *)
+        (FAT_BUFFER_ADDRESS + (unsigned int)sectors_per_fat * 512);
+}
 static volatile unsigned char *const directory_buffer =
     (volatile unsigned char *)DIRECTORY_BUFFER_ADDRESS;
-static volatile const unsigned char *current_directory = root_directory;
-static int current_directory_entries = ROOT_DIRECTORY_ENTRIES;
+static volatile const unsigned char *current_directory;
+static int current_directory_entries;
 static unsigned short current_directory_cluster;
 
 static int cursor_x;
@@ -425,15 +456,15 @@ static int fat12_load_directory(unsigned short cluster)
     unsigned short sector;
 
     if (cluster == 0) {
-        current_directory = root_directory;
-        current_directory_entries = ROOT_DIRECTORY_ENTRIES;
+        current_directory = fat12_root_directory;
+        current_directory_entries = fat12_root_directory_entries;
         current_directory_cluster = 0;
         return 1;
     }
 
     /* The current FAT12 image uses one sector per cluster.  This reads the
        first cluster of a directory; its small starter folders fit in it. */
-    sector = FAT12_DATA_START_SECTOR + cluster - 2;
+    sector = fat12_data_start_sector + cluster - 2;
     if (bios_read_sector(sector, (void *)DIRECTORY_BUFFER_ADDRESS) != 0)
         return 0;
 
@@ -648,6 +679,11 @@ void kernel_main(void)
 {
     idt_install();
     mouse_init();
+
+    fat12_layout_init();
+    current_directory = fat12_root_directory;
+    current_directory_entries = fat12_root_directory_entries;
+    current_directory_cluster = 0;
 
     terminal_clear();
     terminal_write_string("DOS-32: microsoft pls dont sue me :)\n");

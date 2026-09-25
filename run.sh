@@ -1,5 +1,7 @@
 #!/bin/bash
+
 set -e
+DISK_MODE="${1:-floppy}"
 
 export PATH="$PATH:/usr/local/i386elfgcc/bin"
 
@@ -132,8 +134,6 @@ mcopy -i build/OS.bin \
     build/full_kernel.bin \
     ::KERNEL.BIN
 
-# Base directory tree for DOS-32.  The kernel can already list these root
-# entries; navigating into them will be added with the runtime FAT12 driver.
 mmd -i build/OS.bin ::APPS
 mmd -i build/OS.bin ::DOCS
 mmd -i build/OS.bin ::SYSTEM
@@ -153,9 +153,23 @@ echo "Image:"
 ls -lh build/OS.bin
 
 echo
-echo "Starting QEMU..."
+echo "Starting QEMU in $DISK_MODE mode..."
 
-qemu-system-i386 \
-    -drive format=raw,file=build/OS.bin,index=0,if=floppy \
-    -m 128M \
-    -boot a
+case "$DISK_MODE" in
+    floppy)
+        qemu-system-i386 \
+            -drive format=raw,file=build/OS.bin,index=0,if=floppy \
+            -m 128M \
+            -boot a
+        ;;
+    hdd)
+        qemu-system-i386 \
+            -drive format=raw,file=build/OS.bin,if=ide,index=0 \
+            -m 128M \
+            -boot c
+        ;;
+    *)
+        echo "ERROR: unknown disk mode '$DISK_MODE' (use 'floppy' or 'hdd')"
+        exit 1
+        ;;
+esac
