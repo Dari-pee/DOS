@@ -5,3 +5,4 @@ heres some photos of copilot roasting claude
 ![image](https://github.com/Dari-pee/DOS/blob/32-bit-DOS/copilot_roasting_claude.png)  
 claude response:
 ![image](https://github.com/Dari-pee/DOS/blob/32-bit-DOS/image.png)  
+![image](https://github.com/Dari-pee/DOS/blob/32-bit-DOS/Screenshot%202026-09-26%20132435.png)
