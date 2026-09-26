@@ -26,7 +26,6 @@ bsVolumeLabel        db "DARI     OS"
 bsFileSystemType     db "FAT12   "
 
 start:
-    ; INT 13h uses the current stack, so establish one before the first BIOS call.
     cli
     xor ax, ax
     mov ds, ax
@@ -36,16 +35,43 @@ start:
 
     mov [bsDriveNumber], dl
     sti
+    mov dl, [bsDriveNumber]
+    mov ah, 0x41
+    mov bx, 0x55AA
+    int 0x13
+    jc .use_chs
+    cmp bx, 0xAA55
+    jne .use_chs
 
-    mov bx, 0x8000
+    mov word [dap_count],  4
+    mov word [dap_offset], 0x8000
+    mov word [dap_segment], 0
+    mov dword [dap_lba_lo], 1
+    mov dword [dap_lba_hi], 0
 
-    mov ah, 0x02
-    mov al, 4
-    mov ch, 0
-    mov dh, 0
-    mov cl, 2
+    mov dl, [bsDriveNumber]
+    mov si, dap
+    mov ah, 0x42
+    int 0x13
+    jc disk_error
+
+    jmp 0x0800:0000
+
+.use_chs:
+    mov ax, 1
+    xor dx, dx
+    div word [bpbSectorsPerTrack]
+    mov cl, dl
+    inc cl
+    xor dx, dx
+    div word [bpbHeads]
+    mov ch, al
+    mov dh, dl
     mov dl, [bsDriveNumber]
 
+    mov bx, 0x8000
+    mov ah, 0x02
+    mov al, 4
     int 0x13
     jc disk_error
 
@@ -54,6 +80,19 @@ start:
 disk_error:
     cli
     hlt
+dap:
+    db 0x10
+    db 0
+dap_count:
+    dw 0
+dap_offset:
+    dw 0
+dap_segment:
+    dw 0
+dap_lba_lo:
+    dd 0
+dap_lba_hi:
+    dd 0
 
 times 510-($-$$) db 0
 dw 0xAA55

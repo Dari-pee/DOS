@@ -2,6 +2,9 @@
 
 section .text
 
+; w claude for adding HDD support
+; w copilot for writing the easter egg command lines in kernel.c
+
 global bios_set_video_mode
 global bios_read_sector
 
@@ -9,13 +12,15 @@ CODE_SEG32 equ 0x08
 DATA_SEG32 equ 0x10
 CODE_SEG16 equ 0x18
 DATA_SEG16 equ 0x20
+BPB_SECTORS_PER_TRACK equ 0x7C00 + 0x18
+BPB_HEADS             equ 0x7C00 + 0x1A
 
 section .data
 rm_saved_esp: dd 0
 rm_video_mode: db 0
-rm_operation:  db 0          ; 0 = video mode, 1 = disk sector read
+rm_operation:  db 0
 rm_lba:        dw 0
-rm_buffer:     dw 0          ; real-mode buffer offset; must be below 64 KiB
+rm_buffer:     dw 0
 rm_result:     db 0
 
 rm_idt_real:
@@ -24,6 +29,19 @@ rm_idt_real:
 
 rm_idt_saved:
     dw 0
+    dd 0
+
+dap:
+    db 0x10
+    db 0
+dap_count:
+    dw 0
+dap_offset:
+    dw 0
+dap_segment:
+    dw 0
+dap_lba_lo:
+    dd 0
     dd 0
 
 section .text
@@ -46,9 +64,6 @@ bios_set_video_mode:
 
     jmp CODE_SEG16:pmode16_entry
 
-; int bios_read_sector(unsigned short lba, void *buffer)
-; Reads one 512-byte floppy sector to a buffer below physical 0x10000.
-; Returns 0 on success and 1 when BIOS int 13h reports an error.
 bios_read_sector:
     push ebp
     mov ebp, esp
@@ -105,25 +120,45 @@ realmode_entry:
     jmp realmode_done
 
 realmode_disk_read:
-    ; Convert LBA to CHS for a 1.44 MiB floppy: 18 sectors/track, 2 heads.
+    mov dl, [0x0500]
+    mov ah, 0x41
+    mov bx, 0x55AA
+    int 0x13
+    jc .use_chs
+    cmp bx, 0xAA55
+    jne .use_chs
+    mov ax, [rm_lba]
+    mov [dap_lba_lo], ax
+    mov word [dap_lba_lo+2], 0
+    mov ax, [rm_buffer]
+    mov [dap_offset], ax
+    mov word [dap_count], 1
+    mov word [dap_segment], 0
+
+    mov dl, [0x0500]
+    mov si, dap
+    mov ah, 0x42
+    int 0x13
+    jnc realmode_done
+    mov byte [rm_result], 1
+    jmp realmode_done
+
+.use_chs:
     mov ax, [rm_lba]
     xor dx, dx
-    mov bx, 36
-    div bx
-    mov ch, al
-
-    mov ax, dx
-    xor dx, dx
-    mov bx, 18
-    div bx
-    mov dh, al
+    mov si, BPB_SECTORS_PER_TRACK
+    div word [si]
     mov cl, dl
     inc cl
-
-    mov bx, [rm_buffer]
+    xor dx, dx
+    mov si, BPB_HEADS
+    div word [si]
+    mov ch, al
+    mov dh, dl
     mov dl, [0x0500]
-    mov ah, 0x02
-    mov al, 0x01
+    mov bx, [rm_buffer]
+    mov ax, 0x0201
+
     int 0x13
     jnc realmode_done
     mov byte [rm_result], 1
