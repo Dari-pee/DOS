@@ -1,11 +1,44 @@
 #!/bin/bash
-
 set -e
 DISK_MODE="${1:-floppy}"
+
+#   bash run.sh                  mouse + flash drive, each on its own controller
+#   USB_HUB=1 bash run.sh        mouse + flash drive behind a USB hub
+#   USB_KBD=1 bash run.sh        also a USB keyboard (QEMU then sends your keystrokes)
+USB_ARGS=(
+    -device piix3-usb-uhci,id=uhci1
+    -device piix3-usb-uhci,id=uhci2
+    -device piix3-usb-uhci,id=uhci3
+    -device pci-ohci,id=ohci
+    -device usb-ehci,id=ehci
+    -device qemu-xhci,id=xhci
+    -drive if=none,id=usbdisk,file=build/usbstick.img,format=raw
+)
+if [ "${USB_HUB:-0}" = "1" ]; then
+    USB_ARGS+=(-device usb-hub,bus=uhci1.0,port=1)
+    USB_ARGS+=(-device usb-mouse,bus=uhci1.0,port=1.1)
+    USB_ARGS+=(-device usb-storage,drive=usbdisk,bus=uhci1.0,port=1.2)
+    if [ "${USB_KBD:-0}" = "1" ]; then
+        USB_ARGS+=(-device usb-kbd,bus=uhci1.0,port=1.3)
+    fi
+else
+    USB_ARGS+=(-device usb-storage,drive=usbdisk,bus=uhci3.0)
+    USB_ARGS+=(-device usb-mouse,bus=uhci2.0)
+    if [ "${USB_KBD:-0}" = "1" ]; then
+        USB_ARGS+=(-device usb-kbd,bus=uhci1.0)
+    fi
+fi
 
 export PATH="$PATH:/usr/local/i386elfgcc/bin"
 
 mkdir -p build
+
+if [ ! -f build/usbstick.img ]; then
+    dd if=/dev/zero of=build/usbstick.img bs=1M count=2 status=none
+    mkfs.fat -F 12 -n USBSTICK build/usbstick.img > /dev/null
+    echo "Hello from the USB stick" > build/README.TXT
+    mcopy -i build/usbstick.img build/README.TXT ::README.TXT
+fi
 
 echo "[1/9] Assembling first stage..."
 nasm boot.asm -f bin -o build/boot.bin
@@ -29,6 +62,7 @@ i386-elf-gcc \
     -fno-pie \
     -fno-pic \
     -fno-stack-protector \
+    -fno-asynchronous-unwind-tables \
     -c kernel.c \
     -o build/kernel.o
 
@@ -38,6 +72,7 @@ i386-elf-gcc \
     -fno-pie \
     -fno-pic \
     -fno-stack-protector \
+    -fno-asynchronous-unwind-tables \
     -mgeneral-regs-only \
     -c idt.c \
     -o build/idt.o
@@ -48,6 +83,7 @@ i386-elf-gcc \
     -fno-pie \
     -fno-pic \
     -fno-stack-protector \
+    -fno-asynchronous-unwind-tables \
     -c vga.c \
     -o build/vga.o
 
@@ -57,14 +93,23 @@ i386-elf-gcc \
     -fno-pie \
     -fno-pic \
     -fno-stack-protector \
+    -fno-asynchronous-unwind-tables \
     -c mouse.c \
     -o build/mouse.o
+
+CFLAGS="-m32 -ffreestanding -fno-pie -fno-pic -fno-stack-protector -fno-asynchronous-unwind-tables -Wall"
+for f in pci dma kmem delay; do
+    i386-elf-gcc $CFLAGS -c $f.c -o build/$f.o
+done
+
+for f in usb uhci hid storage usbcmd; do
+    i386-elf-gcc $CFLAGS -Os -c $f.c -o build/$f.o
+done
 
 echo "[6/9] Linking kernel..."
 i386-elf-ld \
     -m elf_i386 \
-    -Ttext 0x1000 \
-    --entry=_start \
+    -T kernel.ld \
     --oformat binary \
     -o build/full_kernel.bin \
     build/kernel_entry.o \
@@ -72,8 +117,25 @@ i386-elf-ld \
     build/idt.o \
     build/vga.o \
     build/mouse.o \
+    build/pci.o \
+    build/dma.o \
+    build/kmem.o \
+    build/delay.o \
+    build/usb.o \
+    build/uhci.o \
+    build/hid.o \
+    build/storage.o \
+    build/usbcmd.o \
     build/desktop.o \
     build/realmode.o
+
+KERNEL_SIZE=$(stat -c%s build/full_kernel.bin)
+KERNEL_MAX=$((0x30000))
+if [ "$KERNEL_SIZE" -gt "$KERNEL_MAX" ]; then
+    echo "ERROR: kernel is $KERNEL_SIZE bytes (max $KERNEL_MAX) - it would run into the DMA pool at 0x40000"
+    exit 1
+fi
+echo "kernel     = $KERNEL_SIZE bytes"
 
 echo "[7/9] Checking bootloader..."
 
@@ -159,12 +221,14 @@ case "$DISK_MODE" in
     floppy)
         qemu-system-i386 \
             -drive format=raw,file=build/OS.bin,index=0,if=floppy \
+            "${USB_ARGS[@]}" \
             -m 128M \
             -boot a
         ;;
     hdd)
         qemu-system-i386 \
             -drive format=raw,file=build/OS.bin,if=ide,index=0 \
+            "${USB_ARGS[@]}" \
             -m 128M \
             -boot c
         ;;

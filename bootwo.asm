@@ -10,13 +10,6 @@ bits 16
 ; gui = ass
 ; command line interface = king
 ; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; fuck desktops, they are a pain in the ass to implement and i will never implement one again
-; ggs bru
 
 
 BPB_RESERVED_SECTORS equ 0x7C00 + 0x0E
@@ -25,7 +18,8 @@ BPB_ROOT_ENTRIES      equ 0x7C00 + 0x11
 BPB_SECTORS_PER_FAT   equ 0x7C00 + 0x16
 BPB_SECTORS_PER_TRACK equ 0x7C00 + 0x18
 BPB_HEADS             equ 0x7C00 + 0x1A
-KERNEL_LOCATION equ 0x1000
+KERNEL_LOCATION equ 0x10000
+KERNEL_SEG      equ 0x1000
 DESKTOP_LOCATION equ 0x20000
 FAT_BUFFER       equ 0xA000
 
@@ -89,10 +83,12 @@ start:
 
     mov [KERNEL_CLUSTER], ax
 
+    mov word [READ_SEG], KERNEL_SEG
     mov ax, [KERNEL_CLUSTER]
-    mov bx, KERNEL_LOCATION
+    xor bx, bx
 
     call load_file
+    mov word [READ_SEG], 0
 
     cli
 
@@ -187,7 +183,8 @@ read_sector:
     mov word [dap_lba_lo+2], 0
     mov [dap_offset], bx
     mov word [dap_count], 1
-    mov word [dap_segment], 0
+    mov ax, [READ_SEG]
+    mov [dap_segment], ax
 
     mov dl, [BOOT_DISK]
     mov si, dap
@@ -198,6 +195,7 @@ read_sector:
     jmp .done
 
 .use_chs:
+    push es
     xor dx, dx
     div word [SECTORS_PER_TRACK]
     mov cl, dl
@@ -207,9 +205,12 @@ read_sector:
     mov ch, al
     mov dh, dl
     mov dl, [BOOT_DISK]
+    mov ax, [READ_SEG]
+    mov es, ax
     mov ax, 0x0201
 
     int 13h
+    pop es
     jc disk_error
 
 .done:
@@ -320,6 +321,9 @@ load_file:
     call read_sector
 
     add bx, 512
+    jnz .no_wrap
+    add word [READ_SEG], 0x1000
+.no_wrap:
 
     pop ax
 
@@ -402,6 +406,7 @@ ROOT_BUFFER_ADDR  dw 0
 SECTORS_PER_TRACK dw 0
 HEADS             dw 0
 EXT_SUPPORTED     db 0
+READ_SEG          dw 0
 
 kernel_name:
     db "KERNEL  BIN"

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "io.h"
 #include "mouse.h"
+#include "hid.h"
 
 int mouse_x = 160;
 int mouse_y = 100;
@@ -55,16 +56,13 @@ void mouse_init(void)
     mouse_read();
 }
 
-int mouse_poll(void)
+static int ps2_mouse_poll(void)
 {
     uint8_t status = inb(0x64);
 
     if (!(status & 1))
         return 0;
 
-    /* Keyboard and mouse share port 0x60.  During the graphical desktop
-       keyboard input is unused, but it must still be consumed or it will
-       remain at the controller head and prevent later mouse packets. */
     if (!(status & 0x20)) {
         (void)inb(0x60);
         return 0;
@@ -93,4 +91,11 @@ int mouse_poll(void)
 
     mouse_left_button = mouse_bytes[0] & 0x01;
     return 1;
+}
+
+int mouse_poll(void)
+{
+    int usb = hid_poll();
+    int ps2 = ps2_mouse_poll();
+    return usb || ps2;
 }

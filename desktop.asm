@@ -6,6 +6,7 @@ global desktop_draw_start_menu
 SCREEN equ 0xA0000
 WIDTH  equ 320
 
+
 fill_rect:
     push ebx
     push esi
@@ -63,6 +64,7 @@ draw_glyph:
     pop ecx
     pop eax
     ret
+
 
 draw_text:
 .next:
@@ -174,6 +176,7 @@ desktop_draw_start_menu:
     mov al, 7
     call fill_rect
 
+
     mov edi, SCREEN + (WIDTH * 108) + 10
     mov ecx, 114
     mov edx, 12
@@ -224,7 +227,7 @@ label_about:    db 'ABOUT', 0
 label_shell:    db 'SHELL', 0
 label_exit:     db 'EXIT', 0
 
-; Five pixels wide, seven rows high, ordered A through Z.
+
 font_data:
     db 0x0E,0x11,0x11,0x1F,0x11,0x11,0x11 ; A
     db 0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E ; B

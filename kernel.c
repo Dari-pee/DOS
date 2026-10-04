@@ -4,6 +4,11 @@
 #include "vga.h"
 #include "mouse.h"
 #include "disk.h"
+#include "io.h"
+#include "pci.h"
+#include "usb.h"
+#include "hid.h"
+#include "usbcmd.h"
 
 extern void desktop_draw(void);
 extern void desktop_draw_start_menu(void);
@@ -57,8 +62,6 @@ static void fat12_layout_init(void)
     fat12_data_start_sector      = (unsigned short)(root_start_sector + root_dir_sectors);
     fat12_root_directory_entries = root_entries;
 
-    /* bootwo.asm places the root directory buffer right after its FAT
-       buffer, sized to whatever this FAT actually is. */
     fat12_root_directory = (volatile const unsigned char *)
         (FAT_BUFFER_ADDRESS + (unsigned int)sectors_per_fat * 512);
 }
@@ -138,13 +141,6 @@ static void terminal_write_string(const char *text)
         terminal_write_char(*text++);
 }
 
-static unsigned char inb(unsigned short port)
-{
-    unsigned char value;
-    __asm__ volatile ("inb %1, %0" : "=a"(value) : "Nd"(port));
-    return value;
-}
-
 static char keyboard_getchar(void)
 {
     static const char scan_codes[128] = {
@@ -154,21 +150,65 @@ static char keyboard_getchar(void)
         'k', 'l', ';', '\'', '`', 0, '\\', 'z', 'x', 'c', 'v', 'b', 'n',
         'm', ',', '.', '/', 0, '*', 0, ' '
     };
+    static const char shifted_codes[128] = {
+        0, 27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+        '_', '+', '\b', '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I',
+        'O', 'P', '{', '}', '\n', 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J',
+        'K', 'L', ':', '"', '~', 0, '|', 'Z', 'X', 'C', 'V', 'B', 'N',
+        'M', '<', '>', '?', 0, '*', 0, ' '
+    };
+    static int shift_down;
+    static int caps_lock;
+    static int extended;
     unsigned char scan_code;
     unsigned char status;
 
     for (;;) {
         while (((status = inb(KEYBOARD_STATUS_PORT)) & 1) == 0) {
+            int usb_char = hid_getchar();
+            if (usb_char)
+                return (char)usb_char;
         }
         scan_code = inb(KEYBOARD_DATA_PORT);
 
-        /* PS/2 keyboard and mouse share port 0x60.  Never interpret a
-           mouse packet as a keyboard scan code after leaving the desktop. */
         if ((status & 0x20) != 0)
             continue;
 
-        if ((scan_code & 0x80) == 0 && scan_code < sizeof(scan_codes))
-            return scan_codes[scan_code];
+        if (scan_code == 0xE0) {
+            extended = 1;
+            continue;
+        }
+        if (extended) {
+            extended = 0;
+            continue;
+        }
+
+        {
+            unsigned char code = scan_code & 0x7F;
+            int released = (scan_code & 0x80) != 0;
+            char base;
+            char c;
+
+            if (code == 0x2A || code == 0x36) {
+                shift_down = !released;
+                continue;
+            }
+            if (released)
+                continue;
+            if (code == 0x3A) {
+                caps_lock = !caps_lock;
+                continue;
+            }
+
+            base = scan_codes[code];
+            if (base >= 'a' && base <= 'z')
+                c = (shift_down != caps_lock) ? (char)(base - 'a' + 'A') : base;
+            else
+                c = shift_down ? shifted_codes[code] : base;
+
+            if (c)
+                return c;
+        }
     }
 }
 
@@ -406,8 +446,6 @@ static void draw_cursor(int x, int y)
 
 static void enter_desktop(void)
 {
-    /* If the close click launched this desktop loop again before its release
-       packet arrived, do not treat that same held button as a new click. */
     int previous_button_state = mouse_left_button;
     int start_menu_open = 0;
 
@@ -417,8 +455,6 @@ static void enter_desktop(void)
     draw_cursor(mouse_x, mouse_y);
 
     for (;;) {
-        /* Redraw only after a complete mouse packet changes the position.
-           Erasing and repainting on every polling iteration caused flicker. */
         if (mouse_poll()) {
             restore_under_cursor();
 
@@ -462,8 +498,6 @@ static int fat12_load_directory(unsigned short cluster)
         return 1;
     }
 
-    /* The current FAT12 image uses one sector per cluster.  This reads the
-       first cluster of a directory; its small starter folders fit in it. */
     sector = fat12_data_start_sector + cluster - 2;
     if (bios_read_sector(sector, (void *)DIRECTORY_BUFFER_ADDRESS) != 0)
         return 0;
@@ -524,7 +558,6 @@ static void cd_command(const char *path)
             terminal_write_string("Already at root.\n");
             return;
         }
-        /* FAT12's second entry is '..'; a root parent has cluster zero. */
         cluster = (unsigned short)(current_directory[32 + 26] |
                                    (current_directory[32 + 27] << 8));
         if (!fat12_load_directory(cluster))
@@ -595,7 +628,7 @@ static void run_command(const char *command)
     if (command[0] == '\0') {
         return;
     } else if (strings_equal(command, "help")) {
-        terminal_write_string("Commands: help, clear, dir, cd, echo, about, exit, desktop.\n");
+        terminal_write_string("Commands: help, clear, dir, cd, echo, about, exit, desktop, lspci, usb, usbdisk, usbread, usbwrite, usbsum.\n");
     
     } else if (strings_equal(command, "exit")) {
         terminal_write_string("Exiting DOS-32...\n");
@@ -605,6 +638,14 @@ static void run_command(const char *command)
     
     } else if (strings_equal(command, "desktop")) {
     enter_desktop();
+
+    } else if (strings_equal(command, "lspci")) {
+        pci_scan();
+
+    } else if (strings_equal(command, "usb")) {
+        usb_scan();
+
+    } else if (usbcmd_try(command)) {
 
     } else if (strings_equal(command, "canttakemyeyesoffyou")) {
         terminal_write_string("I love you baby, and if it's quite alright\n");
@@ -687,6 +728,7 @@ void kernel_main(void)
 
     terminal_clear();
     terminal_write_string("DOS-32: microsoft pls dont sue me :)\n");
+    usb_init();
 
     for (;;) {
         char command[128];
