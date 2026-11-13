@@ -1,0 +1,46 @@
+STAGE2_ADDR     equ 0x7E00
+STAGE2_LBA      equ 1
+STAGE2_SECTORS  equ 16
+KERNEL_LBA      equ STAGE2_LBA + STAGE2_SECTORS
+KERNEL_ADDR     equ 0x10000
+
+%ifndef KERNEL_SECTORS
+KERNEL_SECTORS  equ 64
+%endif
+
+RAMTEST_MAX_MB      equ 128
+RAMTEST_HALT_ON_FAIL equ 0
+BOOTINFO_ADDR   equ 0x0500
+MMAP_ADDR       equ 0x0600
+MMAP_MAX        equ 64 
+BOOT_MAGIC      equ 0x544F4F42      ; "BOOT"
+BI_MAGIC        equ BOOTINFO_ADDR + 0
+BI_VERSION      equ BOOTINFO_ADDR + 4
+BI_BOOTDRV      equ BOOTINFO_ADDR + 8
+BI_FLAGS        equ BOOTINFO_ADDR + 12
+BI_MMAPCNT      equ BOOTINFO_ADDR + 16
+BI_MMAPADDR     equ BOOTINFO_ADDR + 20
+BI_LOWMEM       equ BOOTINFO_ADDR + 24
+BI_EXTKB        equ BOOTINFO_ADDR + 28
+BI_EXT64K       equ BOOTINFO_ADDR + 32
+BI_TOTALKB      equ BOOTINFO_ADDR + 36
+BI_RAMTOP       equ BOOTINFO_ADDR + 40
+BI_KADDR        equ BOOTINFO_ADDR + 44
+BI_KSECT        equ BOOTINFO_ADDR + 48
+BI_RTSTATUS     equ BOOTINFO_ADDR + 52
+BI_RTKB         equ BOOTINFO_ADDR + 56
+BI_RTADDR       equ BOOTINFO_ADDR + 60
+BI_RTEXP        equ BOOTINFO_ADDR + 64
+BI_RTACT        equ BOOTINFO_ADDR + 68
+BI_CPUIDMAX     equ BOOTINFO_ADDR + 72
+BI_VENDOR       equ BOOTINFO_ADDR + 76      ; 12 bytes, not NUL-terminated
+BI_FEAT_EDX     equ BOOTINFO_ADDR + 88
+BI_FEAT_ECX     equ BOOTINFO_ADDR + 92
+BI_EXT_EDX      equ BOOTINFO_ADDR + 96
+BI_SIZE         equ 100
+
+BIF_A20         equ 1       ; A20 line enabled
+BIF_E820        equ 2       ; memory map came from BIOS E820 (else synthesized)
+BIF_CPUID       equ 4       ; CPUID available
+BIF_LONGMODE    equ 8       ; CPU supports 64-bit long mode
+BIF_RAMTEST     equ 16
