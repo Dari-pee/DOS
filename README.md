@@ -1,4 +1,4 @@
-Dari's Operating System (DOS) is a 32-Bit Operating System I made 3 years ago (when i was 11)  
+Dari's Operating System (DOS) Is a Unix-Like and is a 32-Bit Operating System I made 3 years ago (when i was 11)  
 I Always dreamt of Creating my Own OS and showing it to people  
 ty claude for troubleshooting my errors, and i PROMISE this isnt AI  
 ty OSDEV and ty DAEDELUS community  
@@ -8,6 +8,8 @@ some thanks to nanobyte aswell
 DOS uses the FAT32 Filesystem  
 i changed from FAT12 to FAT32 since FAT12 sucked  
 love you fatfs ❤️❤️  
+i also added a MV command to move shit
+
 
 " no matter how ridiculous the odds may seem,  
 within us resides the power to overcome these challenges and achieve something beautiful.  
